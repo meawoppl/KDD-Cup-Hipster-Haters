@@ -17,12 +17,13 @@ class NormedRatingT1(IsDescription):
     item = UInt32Col(pos=0)
     user = UInt32Col(pos=1)
     rate = Float64Col(pos=2)
+    time = UInt32Col(pos=3)
 
 class NormedRatingT2(IsDescription):
     item = UInt32Col(pos=0)
     user = UInt32Col(pos=1)
     rate = Float64Col(pos=2)
-    time = UInt32Col(pos=3)
+
 
 class ItemMeanStd(IsDescription):
     item = UInt32Col(pos=0)
@@ -153,55 +154,61 @@ def compute_item_means(in_h5_path, out_h5_path):
     item_means_table = out_h5.createTable("/", "item_means", ItemMeanStd)    
    
     # Find the unique items
-    unique_items = array(list(set(list(in_h5.root.normalized.cols.item[:]))))
-    unique_items.sort()
+    unique_items = arange(in_h5.root.normalized.cols.item[:].max()+1)
 
     # Store the results in these
     item_means  = zeros(unique_items.shape, dtype=float64)
     item_stdevs = zeros(unique_items.shape, dtype=float64)
 
     # Iterate over them
+    print len(unique_items)
     for i, item in enumerate(unique_items):
         # Grab the records for that item
         ratings = in_h5.root.normalized.readWhere("item==%iL" % item)
         
         # Calculate the mean and stdev
-        item_means[i]  = ratings["rate"].mean()
-        item_stdevs[i] = ratings["rate"].std()
-        if (i % 1000) == 0: print i, ratings["rate"].mean(), ratings["rate"].std(), out_h5.flush()
-
-
-    item_means_table.append(zip(unique_items, item_means, item_stdevs))
+        this_item_mean = ratings["rate"].mean()
+        this_item_std  = ratings["rate"].std()
+        if (i % 1000) == 0: print i, ratings["rate"].mean(), ratings["rate"].std()
+        
+        item_means_table.append([tuple([item, this_item_mean, this_item_std])])
 
     in_h5.close()
     out_h5.close()
         
 # Base "raw" data file
-full_data_path = "track%i-full.h5" % track_no
+full_data_path = "track%i-data/track%i-full.h5" % (track_no, track_no)
 
 # User based statistics
-simp_stats_file = "temp/track%i-userstats.h5" % track_no
+simp_stats_file = "track%i-data/track%i-userstats.h5" % (track_no, track_no)
 
 # Normalized ratings
-normalized_ratings_file = "temp/track%i-normed-ratings.h5" % track_no
+normalized_ratings_file = "track%i-data/track%i-normed-ratings.h5" % (track_no, track_no)
 
 # Item mean ratings
-item_means_file = "temp/track%i-mean-item-ratings.h5" % track_no
+item_means_file = "track%i-data/track%i-mean-item-ratings.h5" % (track_no, track_no)
 
 # This computes the user mean, numebr of ratings, and standard deviation
 if not os.path.isfile(simp_stats_file):
     print "Computing User Stats:"
     compute_user_stats(full_data_path, simp_stats_file, track_no)
     print "\tDone"
+else:
+    print "User stats already completed!"
 
 # This normalizes the ratings based on the numbers above
 if not os.path.isfile(normalized_ratings_file):
     print "Normalizing the ratings based on the user stats"
     compute_normed_ratings(full_data_path, simp_stats_file, normalized_ratings_file, track_no)
     print "\tDone"
+else:
+    print "Normalized ratings already completed!"
+
 
 # Now we want to compute the mean song score.  This is useful for a number of other things.
 if not os.path.isfile(item_means_file):
     print "Finding the mean user score for each item"
     compute_item_means(normalized_ratings_file, item_means_file)
     print "\tDone"
+else:
+    print "Item means already completed!"
